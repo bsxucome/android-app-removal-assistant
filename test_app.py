@@ -33,7 +33,7 @@ class FakeResponse:
 
 class ParserTests(unittest.TestCase):
     def test_application_version(self):
-        self.assertEqual(APP_VERSION, "1.0.1")
+        self.assertEqual(APP_VERSION, "1.0.2")
 
     def test_package_validation(self):
         self.assertTrue(PACKAGE_RE.fullmatch("com.example.app"))

@@ -26,7 +26,7 @@ from apkutils2 import APK
 
 
 APP_TITLE = "Android应用清除助手"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 PROJECT_URL = "https://github.com/bsxucome/android-app-removal-assistant"
 CONFIG_NAME = "Android应用清除助手.json"
 LEGACY_CONFIG_NAMES = ("安卓应用清理助手.json", "安卓三方应用清理工具.json")
@@ -515,6 +515,7 @@ class CleanerApp(tk.Tk):
             state="readonly",
             style="Device.TCombobox",
             font=("Microsoft YaHei UI", 9),
+            postcommand=self._prepare_device_dropdown,
         )
         self.device_box.pack(side="left", fill="x", expand=True, padx=(6, 8))
         self.device_box.bind("<<ComboboxSelected>>", self._device_selection_changed)
@@ -734,6 +735,38 @@ class CleanerApp(tk.Tk):
 
     def _config_path(self) -> Path:
         return app_dir() / CONFIG_NAME
+
+    def _prepare_device_dropdown(self):
+        try:
+            popdown = self.tk.call(
+                "ttk::combobox::PopdownWindow", str(self.device_box)
+            )
+            width = max(self.device_box.winfo_width(), 1)
+            self.tk.call("wm", "minsize", popdown, width, 1)
+            self.tk.call(
+                "wm",
+                "maxsize",
+                popdown,
+                width,
+                self.device_box.winfo_screenheight(),
+            )
+            self.tk.call("wm", "resizable", popdown, False, True)
+            self.after(0, self._fit_device_dropdown)
+        except tk.TclError:
+            pass
+
+    def _fit_device_dropdown(self):
+        try:
+            popdown = self.tk.call(
+                "ttk::combobox::PopdownWindow", str(self.device_box)
+            )
+            width = max(self.device_box.winfo_width(), 1)
+            height = max(int(self.tk.call("winfo", "height", popdown)), 1)
+            x = self.device_box.winfo_rootx()
+            y = int(self.tk.call("winfo", "rooty", popdown))
+            self.tk.call("wm", "geometry", popdown, f"{width}x{height}+{x}+{y}")
+        except tk.TclError:
+            pass
 
     def _show_about(self):
         dialog = tk.Toplevel(self)
