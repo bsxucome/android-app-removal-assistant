@@ -26,7 +26,7 @@ from apkutils2 import APK
 
 
 APP_TITLE = "Android应用清除助手"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 PROJECT_URL = "https://github.com/bsxucome/android-app-removal-assistant"
 CONFIG_NAME = "Android应用清除助手.json"
 LEGACY_CONFIG_NAMES = ("安卓应用清理助手.json", "安卓三方应用清理工具.json")
@@ -371,6 +371,157 @@ class ConfirmDialog(tk.Toplevel):
         self.destroy()
 
 
+class DeviceDropdown(tk.Frame):
+    def __init__(self, parent, variable: tk.StringVar, command):
+        super().__init__(
+            parent,
+            background="#f4f2ee",
+            highlightbackground="#aaa59b",
+            highlightcolor="#1677d2",
+            highlightthickness=1,
+            height=31,
+        )
+        self.variable = variable
+        self.command = command
+        self.values: list[str] = []
+        self.selected_index = -1
+        self.popup: tk.Frame | None = None
+        self.listbox: tk.Listbox | None = None
+        self.outside_bind_id: str | None = None
+        self.pack_propagate(False)
+
+        self.label = tk.Label(
+            self,
+            textvariable=variable,
+            background="#f4f2ee",
+            foreground="#172b3a",
+            anchor="w",
+            padx=9,
+            font=("Microsoft YaHei UI", 9),
+        )
+        self.label.pack(side="left", fill="both", expand=True)
+        self.arrow = tk.Label(
+            self,
+            text="▼",
+            background="#f4f2ee",
+            foreground="#172b3a",
+            width=2,
+            cursor="hand2",
+            font=("Microsoft YaHei UI", 8),
+        )
+        self.arrow.pack(side="right", fill="y")
+        for widget in (self, self.label, self.arrow):
+            widget.bind("<Button-1>", self._toggle_popup)
+        self.bind("<Destroy>", lambda _event: self._close_popup())
+
+    def __setitem__(self, key, value):
+        if key != "values":
+            return super().__setitem__(key, value)
+        self.values = list(value)
+        if self.selected_index >= len(self.values):
+            self.selected_index = -1
+
+    def current(self, index: int | None = None) -> int:
+        if index is None:
+            return self.selected_index
+        if not 0 <= index < len(self.values):
+            self.selected_index = -1
+            self.variable.set("")
+            return -1
+        self.selected_index = index
+        self.variable.set(self.values[index])
+        return index
+
+    def _toggle_popup(self, _event=None):
+        if self.popup and self.popup.winfo_exists():
+            self._close_popup()
+        elif self.values:
+            self._open_popup()
+        return "break"
+
+    def _open_popup(self):
+        self.update_idletasks()
+        host = self.winfo_toplevel()
+        popup = tk.Frame(
+            host,
+            background="#ffffff",
+            highlightbackground="#595959",
+            highlightthickness=1,
+        )
+        self.popup = popup
+
+        visible_rows = min(max(len(self.values), 1), 8)
+        listbox = tk.Listbox(
+            popup,
+            activestyle="none",
+            background="#ffffff",
+            foreground="#172b3a",
+            selectbackground="#1473d4",
+            selectforeground="#ffffff",
+            borderwidth=0,
+            relief="flat",
+            highlightthickness=0,
+            exportselection=False,
+            font=("Microsoft YaHei UI", 9),
+            height=visible_rows,
+        )
+        self.listbox = listbox
+        for value in self.values:
+            listbox.insert("end", value)
+        if self.selected_index >= 0:
+            listbox.selection_set(self.selected_index)
+            listbox.activate(self.selected_index)
+            listbox.see(self.selected_index)
+        listbox.pack(fill="both", expand=True)
+        listbox.bind("<ButtonRelease-1>", self._choose_from_popup)
+        listbox.bind("<Return>", self._choose_from_popup)
+        listbox.bind("<Escape>", lambda _event: self._close_popup())
+        self.outside_bind_id = self.winfo_toplevel().bind(
+            "<Button-1>", self._close_popup_from_outside, add="+"
+        )
+
+        width = max(self.winfo_width(), 1)
+        row_height = max(listbox.winfo_reqheight(), 22)
+        x = self.winfo_rootx() - host.winfo_rootx()
+        y = self.winfo_rooty() - host.winfo_rooty() + self.winfo_height()
+        screen_height = self.winfo_screenheight()
+        if self.winfo_rooty() + self.winfo_height() + row_height > screen_height:
+            y -= self.winfo_height() + row_height
+        popup.place(x=x, y=y, width=width, height=row_height)
+        popup.lift()
+        listbox.focus_set()
+
+    def _choose_from_popup(self, _event=None):
+        if not self.listbox:
+            return
+        selected = self.listbox.curselection()
+        if selected:
+            self.current(selected[0])
+            self.command()
+        self._close_popup()
+
+    def _close_popup_from_outside(self, event):
+        widget = event.widget
+        while widget is not None:
+            if widget is self or widget is self.popup:
+                return
+            widget = getattr(widget, "master", None)
+        self._close_popup()
+
+    def _close_popup(self):
+        popup = self.popup
+        self.popup = None
+        self.listbox = None
+        if self.outside_bind_id:
+            try:
+                self.winfo_toplevel().unbind("<Button-1>", self.outside_bind_id)
+            except tk.TclError:
+                pass
+            self.outside_bind_id = None
+        if popup and popup.winfo_exists():
+            popup.destroy()
+
+
 class CleanerApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -509,16 +660,12 @@ class CleanerApp(tk.Tk):
             font=("Microsoft YaHei UI", 11, "bold"),
         ).pack(side="left", padx=(0, 10))
         self.device_var = tk.StringVar()
-        self.device_box = ttk.Combobox(
+        self.device_box = DeviceDropdown(
             device_row,
-            textvariable=self.device_var,
-            state="readonly",
-            style="Device.TCombobox",
-            font=("Microsoft YaHei UI", 9),
-            postcommand=self._prepare_device_dropdown,
+            variable=self.device_var,
+            command=self._device_selection_changed,
         )
         self.device_box.pack(side="left", fill="x", expand=True, padx=(6, 8))
-        self.device_box.bind("<<ComboboxSelected>>", self._device_selection_changed)
         ttk.Button(
             device_row,
             text="刷新设备",
@@ -735,86 +882,6 @@ class CleanerApp(tk.Tk):
 
     def _config_path(self) -> Path:
         return app_dir() / CONFIG_NAME
-
-    def _prepare_device_dropdown(self):
-        try:
-            popdown = self.tk.call(
-                "ttk::combobox::PopdownWindow", str(self.device_box)
-            )
-            width = max(self.device_box.winfo_width(), 1)
-            self.tk.call("wm", "minsize", popdown, width, 1)
-            self.tk.call(
-                "wm",
-                "maxsize",
-                popdown,
-                width,
-                self.device_box.winfo_screenheight(),
-            )
-            self.tk.call("wm", "resizable", popdown, False, True)
-            self.after(0, self._fit_device_dropdown)
-            self.after(30, self._fit_device_dropdown)
-        except tk.TclError:
-            pass
-
-    def _fit_device_dropdown(self):
-        try:
-            popdown = self.tk.call(
-                "ttk::combobox::PopdownWindow", str(self.device_box)
-            )
-            width = max(self.device_box.winfo_width(), 1)
-            height = max(int(self.tk.call("winfo", "height", popdown)), 1)
-            x = self.device_box.winfo_rootx()
-            y = int(self.tk.call("winfo", "rooty", popdown))
-            self.tk.call("wm", "geometry", popdown, f"{width}x{height}+{x}+{y}")
-            if sys.platform == "win32":
-                self._fit_device_dropdown_win32(popdown)
-        except tk.TclError:
-            pass
-
-    def _fit_device_dropdown_win32(self, popdown: str):
-        class Rect(ctypes.Structure):
-            _fields_ = [
-                ("left", ctypes.c_long),
-                ("top", ctypes.c_long),
-                ("right", ctypes.c_long),
-                ("bottom", ctypes.c_long),
-            ]
-
-        def handle(value) -> int:
-            text = str(value)
-            return int(text, 16) if text.lower().startswith("0x") else int(text)
-
-        try:
-            control_handle = self.device_box.winfo_id()
-            popup_child_handle = handle(self.tk.call("winfo", "id", popdown))
-            control_rect = Rect()
-            popup_rect = Rect()
-            user32 = ctypes.windll.user32
-            get_root = 2
-            popup_handle = user32.GetAncestor(popup_child_handle, get_root)
-            if not popup_handle:
-                popup_handle = popup_child_handle
-            if not user32.GetWindowRect(control_handle, ctypes.byref(control_rect)):
-                return
-            if not user32.GetWindowRect(popup_handle, ctypes.byref(popup_rect)):
-                return
-            width = control_rect.right - control_rect.left
-            height = popup_rect.bottom - popup_rect.top
-            if width <= 0 or height <= 0:
-                return
-            no_zorder = 0x0004
-            no_activate = 0x0010
-            user32.SetWindowPos(
-                popup_handle,
-                0,
-                control_rect.left,
-                popup_rect.top,
-                width,
-                height,
-                no_zorder | no_activate,
-            )
-        except (AttributeError, OSError, TypeError, ValueError, tk.TclError):
-            pass
 
     def _show_about(self):
         dialog = tk.Toplevel(self)

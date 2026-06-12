@@ -1,4 +1,5 @@
 import unittest
+import tkinter as tk
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from app import (
     AppInfo,
     APP_VERSION,
     CleanerApp,
+    DeviceDropdown,
     Device,
     PACKAGE_RE,
     is_valid_app_name,
@@ -33,7 +35,7 @@ class FakeResponse:
 
 class ParserTests(unittest.TestCase):
     def test_application_version(self):
-        self.assertEqual(APP_VERSION, "1.0.3")
+        self.assertEqual(APP_VERSION, "1.0.4")
 
     def test_package_validation(self):
         self.assertTrue(PACKAGE_RE.fullmatch("com.example.app"))
@@ -45,6 +47,21 @@ class ParserTests(unittest.TestCase):
         device = Device("ABC", "device", "Pixel")
         self.assertIn("ABC", device.display)
         self.assertIn("Pixel", device.display)
+
+    def test_device_dropdown_matches_control_width(self):
+        root = tk.Tk()
+        root.geometry("800x240+10+10")
+        variable = tk.StringVar()
+        dropdown = DeviceDropdown(root, variable, lambda: None)
+        dropdown.pack(fill="x", padx=20, pady=20)
+        dropdown["values"] = ["DEVICE  [device]  MODEL"]
+        dropdown.current(0)
+        root.update()
+        dropdown._open_popup()
+        root.update()
+        self.assertEqual(dropdown.winfo_rootx(), dropdown.popup.winfo_rootx())
+        self.assertEqual(dropdown.winfo_width(), dropdown.popup.winfo_width())
+        root.destroy()
 
     def test_rejects_invalid_app_names(self):
         self.assertFalse(is_valid_app_name("超出字元限制 %1$d 個字元 (上限 %2$d 個字元)"))

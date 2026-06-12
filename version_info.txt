@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 3, 0),
-    prodvers=(1, 0, 3, 0),
+    filevers=(1, 0, 4, 0),
+    prodvers=(1, 0, 4, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', ''),
           StringStruct('FileDescription', 'Android应用清除助手'),
-          StringStruct('FileVersion', '1.0.3.0'),
+          StringStruct('FileVersion', '1.0.4.0'),
           StringStruct('InternalName', 'AndroidAppRemovalAssistant'),
           StringStruct('LegalCopyright', ''),
           StringStruct('OriginalFilename', 'Android应用清除助手.exe'),
           StringStruct('ProductName', 'Android应用清除助手'),
-          StringStruct('ProductVersion', '1.0.3.0')
+          StringStruct('ProductVersion', '1.0.4.0')
         ]
       )
     ]),
