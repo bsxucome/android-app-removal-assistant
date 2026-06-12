@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import ctypes
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,6 +26,8 @@ from apkutils2 import APK
 
 
 APP_TITLE = "Android应用清除助手"
+APP_VERSION = "1.0.1"
+PROJECT_URL = "https://github.com/bsxucome/android-app-removal-assistant"
 CONFIG_NAME = "Android应用清除助手.json"
 LEGACY_CONFIG_NAMES = ("安卓应用清理助手.json", "安卓三方应用清理工具.json")
 PACKAGE_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$")
@@ -422,6 +425,19 @@ class CleanerApp(tk.Tk):
             foreground="#60758a",
             font=("Microsoft YaHei UI", 9),
         )
+        style.configure(
+            "About.TButton",
+            background="#ffffff",
+            foreground="#7a8b9a",
+            borderwidth=0,
+            padding=(4, 0),
+            font=("Microsoft YaHei UI", 8),
+        )
+        style.map(
+            "About.TButton",
+            background=[("active", "#ffffff")],
+            foreground=[("active", "#1677d2")],
+        )
         style.configure("TNotebook", background="#eef3f8", borderwidth=0)
         style.configure(
             "TNotebook.Tab",
@@ -707,10 +723,63 @@ class CleanerApp(tk.Tk):
         self.status_label = ttk.Label(
             self.status_frame, textvariable=self.status_var, style="Card.TLabel"
         )
-        self.status_label.pack(anchor="w")
+        self.status_label.pack(side="left", anchor="w")
+        ttk.Button(
+            self.status_frame,
+            text="关于软件",
+            command=self._show_about,
+            style="About.TButton",
+            cursor="hand2",
+        ).pack(side="right")
 
     def _config_path(self) -> Path:
         return app_dir() / CONFIG_NAME
+
+    def _show_about(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("关于软件")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        try:
+            dialog.iconbitmap(default=str(icon_path()))
+        except tk.TclError:
+            pass
+
+        card = ttk.Frame(dialog, padding=(24, 20))
+        card.pack(fill="both", expand=True)
+        ttk.Label(
+            card,
+            text=APP_TITLE,
+            font=("Microsoft YaHei UI", 13, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            card,
+            text=f"版本 {APP_VERSION}",
+            foreground="#687b8d",
+        ).pack(anchor="w", pady=(5, 12))
+        ttk.Label(
+            card,
+            text="用于扫描和清除 Android 设备中的第三方应用。",
+            foreground="#40566b",
+        ).pack(anchor="w")
+        project_link = tk.Label(
+            card,
+            text="查看 GitHub 项目",
+            foreground="#1677d2",
+            cursor="hand2",
+            font=("Microsoft YaHei UI", 9, "underline"),
+        )
+        project_link.pack(anchor="w", pady=(14, 18))
+        project_link.bind("<Button-1>", lambda _event: webbrowser.open(PROJECT_URL))
+        ttk.Button(card, text="关闭", command=dialog.destroy).pack(anchor="e")
+
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - dialog.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
     def _make_empty_state(self, parent, title, description, command):
         card = tk.Frame(

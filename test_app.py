@@ -7,6 +7,7 @@ from urllib.error import HTTPError, URLError
 from app import (
     AdbClient,
     AppInfo,
+    APP_VERSION,
     CleanerApp,
     Device,
     PACKAGE_RE,
@@ -31,6 +32,9 @@ class FakeResponse:
 
 
 class ParserTests(unittest.TestCase):
+    def test_application_version(self):
+        self.assertEqual(APP_VERSION, "1.0.1")
+
     def test_package_validation(self):
         self.assertTrue(PACKAGE_RE.fullmatch("com.example.app"))
         self.assertTrue(PACKAGE_RE.fullmatch("cn.test_app.mobile2"))
