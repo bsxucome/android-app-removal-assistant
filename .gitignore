@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.spec
+
+Android应用清除助手.json
+安卓应用清理助手.json
+安卓三方应用清理工具.json
+
+assets/icon/app-icon-source.png
+.idea/
+.vscode/
