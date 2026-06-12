@@ -26,7 +26,7 @@ from apkutils2 import APK
 
 
 APP_TITLE = "Android应用清除助手"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 PROJECT_URL = "https://github.com/bsxucome/android-app-removal-assistant"
 CONFIG_NAME = "Android应用清除助手.json"
 LEGACY_CONFIG_NAMES = ("安卓应用清理助手.json", "安卓三方应用清理工具.json")
@@ -752,6 +752,7 @@ class CleanerApp(tk.Tk):
             )
             self.tk.call("wm", "resizable", popdown, False, True)
             self.after(0, self._fit_device_dropdown)
+            self.after(30, self._fit_device_dropdown)
         except tk.TclError:
             pass
 
@@ -765,7 +766,54 @@ class CleanerApp(tk.Tk):
             x = self.device_box.winfo_rootx()
             y = int(self.tk.call("winfo", "rooty", popdown))
             self.tk.call("wm", "geometry", popdown, f"{width}x{height}+{x}+{y}")
+            if sys.platform == "win32":
+                self._fit_device_dropdown_win32(popdown)
         except tk.TclError:
+            pass
+
+    def _fit_device_dropdown_win32(self, popdown: str):
+        class Rect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        def handle(value) -> int:
+            text = str(value)
+            return int(text, 16) if text.lower().startswith("0x") else int(text)
+
+        try:
+            control_handle = self.device_box.winfo_id()
+            popup_child_handle = handle(self.tk.call("winfo", "id", popdown))
+            control_rect = Rect()
+            popup_rect = Rect()
+            user32 = ctypes.windll.user32
+            get_root = 2
+            popup_handle = user32.GetAncestor(popup_child_handle, get_root)
+            if not popup_handle:
+                popup_handle = popup_child_handle
+            if not user32.GetWindowRect(control_handle, ctypes.byref(control_rect)):
+                return
+            if not user32.GetWindowRect(popup_handle, ctypes.byref(popup_rect)):
+                return
+            width = control_rect.right - control_rect.left
+            height = popup_rect.bottom - popup_rect.top
+            if width <= 0 or height <= 0:
+                return
+            no_zorder = 0x0004
+            no_activate = 0x0010
+            user32.SetWindowPos(
+                popup_handle,
+                0,
+                control_rect.left,
+                popup_rect.top,
+                width,
+                height,
+                no_zorder | no_activate,
+            )
+        except (AttributeError, OSError, TypeError, ValueError, tk.TclError):
             pass
 
     def _show_about(self):
