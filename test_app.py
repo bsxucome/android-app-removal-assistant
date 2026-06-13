@@ -12,9 +12,13 @@ from app import (
     CleanerApp,
     DeviceDropdown,
     Device,
+    LookupResult,
     PACKAGE_RE,
+    classify_network_error,
     is_valid_app_name,
+    query_fdroid_name,
     query_google_play_name,
+    query_online_name,
     resolve_app_name_aapt2,
 )
 
@@ -33,9 +37,22 @@ class FakeResponse:
         return self.body
 
 
+class FakeOpener:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+
+    def open(self, request, timeout):
+        self.requests.append((request, timeout))
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return FakeResponse(response)
+
+
 class ParserTests(unittest.TestCase):
     def test_application_version(self):
-        self.assertEqual(APP_VERSION, "1.0.4")
+        self.assertEqual(APP_VERSION, "1.1.0")
 
     def test_package_validation(self):
         self.assertTrue(PACKAGE_RE.fullmatch("com.example.app"))
@@ -111,39 +128,48 @@ class ParserTests(unittest.TestCase):
             '{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Spotify"}'
             "</script>"
         )
-        seen = {}
-
-        def fake_urlopen(request, timeout):
-            seen["url"] = request.full_url
-            seen["timeout"] = timeout
-            return FakeResponse(html)
-
-        with patch("app.urllib.request.urlopen", side_effect=fake_urlopen):
-            self.assertEqual(
-                query_google_play_name("com.spotify.music", "zh_CN", "CN"),
-                ("success", "Spotify"),
-            )
-        self.assertIn("hl=zh_CN", seen["url"])
-        self.assertIn("gl=CN", seen["url"])
-        self.assertEqual(seen["timeout"], 10)
+        opener = FakeOpener([html])
+        result = query_google_play_name("com.spotify.music", "zh_CN", "CN", opener=opener)
+        self.assertEqual(result, LookupResult("success", "Spotify", "Google Play"))
+        self.assertIn("hl=zh_CN", opener.requests[0][0].full_url)
+        self.assertIn("gl=CN", opener.requests[0][0].full_url)
+        self.assertEqual(opener.requests[0][1], 10)
 
     def test_google_play_handles_missing_404_and_network_error(self):
-        with patch("app.urllib.request.urlopen", return_value=FakeResponse("<html></html>")):
-            self.assertEqual(
-                query_google_play_name("com.example.missing", "en_US", "US"),
-                ("not_found", ""),
-            )
+        result = query_google_play_name(
+            "com.example.missing", "en_US", "US", opener=FakeOpener(["<html></html>"])
+        )
+        self.assertEqual(result.status, "parse_error")
         error_404 = HTTPError("https://example.invalid", 404, "Not found", None, None)
-        with patch("app.urllib.request.urlopen", side_effect=error_404):
-            self.assertEqual(
-                query_google_play_name("com.example.missing", "en_US", "US"),
-                ("not_found", ""),
-            )
-        with patch("app.urllib.request.urlopen", side_effect=URLError("offline")):
-            self.assertEqual(
-                query_google_play_name("com.example.missing", "en_US", "US"),
-                ("error", ""),
-            )
+        result = query_google_play_name(
+            "com.example.missing", "en_US", "US", opener=FakeOpener([error_404])
+        )
+        self.assertEqual(result.status, "not_found")
+        result = query_google_play_name(
+            "com.example.missing", "en_US", "US", opener=FakeOpener([URLError("offline")])
+        )
+        self.assertEqual(result.status, "connection_error")
+
+    def test_fdroid_name_and_online_fallback(self):
+        fdroid_html = (
+            '<meta property="og:title" content="F-Droid | F-Droid">'
+        )
+        result = query_fdroid_name(
+            "org.fdroid.fdroid", "en_US", opener=FakeOpener([fdroid_html])
+        )
+        self.assertEqual(result, LookupResult("success", "F-Droid", "F-Droid"))
+
+        play_404 = HTTPError("https://example.invalid", 404, "Not found", None, None)
+        opener = FakeOpener([play_404, fdroid_html])
+        with patch("app.network_opener", return_value=opener):
+            result, attempts = query_online_name("org.fdroid.fdroid", "en_US", "US")
+        self.assertEqual(result.source, "F-Droid")
+        self.assertEqual([item.status for item in attempts], ["not_found", "success"])
+
+    def test_network_error_classification(self):
+        self.assertEqual(classify_network_error(URLError(TimeoutError())), "timeout")
+        self.assertEqual(classify_network_error(URLError("proxy tunnel failed")), "proxy_error")
+        self.assertEqual(classify_network_error(URLError("offline")), "connection_error")
 
     def test_online_results_do_not_overwrite_local_name(self):
         fake_app = SimpleNamespace(
@@ -155,15 +181,31 @@ class ParserTests(unittest.TestCase):
         counts = CleanerApp._apply_online_results(
             fake_app,
             [
-                ("com.example.local", "success", "Store name"),
-                ("com.example.unknown", "success", "Known name"),
-                ("com.example.missing", "not_found", ""),
-                ("com.example.error", "error", ""),
+                (
+                    "com.example.local",
+                    LookupResult("success", "Store name", "Google Play"),
+                    [],
+                ),
+                (
+                    "com.example.unknown",
+                    LookupResult("success", "Known name", "F-Droid"),
+                    [],
+                ),
+                ("com.example.missing", LookupResult("not_found"), []),
+                (
+                    "com.example.error",
+                    LookupResult("failed"),
+                    [LookupResult("timeout", source="Google Play")],
+                ),
             ],
         )
         self.assertEqual(fake_app.apps[0].name, "本机名称")
         self.assertEqual(fake_app.apps[1].name, "Known name")
-        self.assertEqual(counts, (1, 1, 1))
+        self.assertEqual(counts["success"], 1)
+        self.assertEqual(counts["F-Droid"], 1)
+        self.assertEqual(counts["not_found"], 1)
+        self.assertEqual(counts["failed"], 1)
+        self.assertEqual(counts["timeout"], 1)
 
 
 if __name__ == "__main__":

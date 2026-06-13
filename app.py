@@ -15,6 +15,8 @@ import urllib.parse
 import urllib.request
 import ctypes
 import webbrowser
+import socket
+import ssl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,7 +28,7 @@ from apkutils2 import APK
 
 
 APP_TITLE = "Android应用清除助手"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.1.0"
 PROJECT_URL = "https://github.com/bsxucome/android-app-removal-assistant"
 CONFIG_NAME = "Android应用清除助手.json"
 LEGACY_CONFIG_NAMES = ("安卓应用清理助手.json", "安卓三方应用清理工具.json")
@@ -99,6 +101,14 @@ class AppInfo:
     package: str
     apk_path: str
     whitelisted: bool = False
+
+
+@dataclass(frozen=True)
+class LookupResult:
+    status: str
+    name: str = ""
+    source: str = ""
+    reason: str = ""
 
 
 class AdbError(RuntimeError):
@@ -294,12 +304,63 @@ class PlayMetadataParser(HTMLParser):
             self.in_json_ld = False
 
 
+class FdroidMetadataParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.name = ""
+        self.in_heading = False
+        self.heading_parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "meta" and attributes.get("property") == "og:title":
+            self.name = attributes.get("content", "").strip()
+        elif tag in {"h1", "h2"} and not self.name:
+            self.in_heading = True
+            self.heading_parts = []
+
+    def handle_data(self, data):
+        if self.in_heading:
+            self.heading_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in {"h1", "h2"} and self.in_heading:
+            candidate = " ".join("".join(self.heading_parts).split())
+            if candidate:
+                self.name = candidate
+            self.in_heading = False
+
+
+def network_opener(proxy_url: str = "") -> urllib.request.OpenerDirector:
+    proxies = (
+        {"http": proxy_url, "https": proxy_url}
+        if proxy_url
+        else urllib.request.getproxies()
+    )
+    return urllib.request.build_opener(urllib.request.ProxyHandler(proxies))
+
+
+def classify_network_error(exc: BaseException) -> str:
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(reason, (TimeoutError, socket.timeout)):
+        return "timeout"
+    if isinstance(reason, socket.gaierror):
+        return "dns_error"
+    if isinstance(reason, ssl.SSLError):
+        return "tls_error"
+    text = str(reason).casefold()
+    if "proxy" in text or "tunnel connection failed" in text:
+        return "proxy_error"
+    return "connection_error"
+
+
 def query_google_play_name(
     package: str,
     language: str | None = None,
     region: str | None = None,
     timeout: int = 10,
-) -> tuple[str, str]:
+    opener: urllib.request.OpenerDirector | None = None,
+) -> LookupResult:
     language, detected_region = system_locale() if language is None else (language, region or "US")
     region = region or detected_region
     query = urllib.parse.urlencode({"id": package, "hl": language.replace("-", "_"), "gl": region})
@@ -311,15 +372,20 @@ def query_google_play_name(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with (opener or network_opener()).open(request, timeout=timeout) as response:
             html = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
-        return ("not_found", "") if exc.code == 404 else ("error", "")
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return "error", ""
+        return LookupResult("not_found", source="Google Play") if exc.code == 404 else LookupResult(
+            "http_error", source="Google Play", reason=f"HTTP {exc.code}"
+        )
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return LookupResult(classify_network_error(exc), source="Google Play", reason=str(exc))
 
     parser = PlayMetadataParser()
-    parser.feed(html)
+    try:
+        parser.feed(html)
+    except Exception as exc:
+        return LookupResult("parse_error", source="Google Play", reason=str(exc))
     for raw in parser.parts:
         try:
             payload = json.loads(raw)
@@ -332,8 +398,66 @@ def query_google_play_name(
                 and item.get("@type") == "SoftwareApplication"
                 and is_valid_app_name(item.get("name"), package)
             ):
-                return "success", item["name"].strip()
-    return "not_found", ""
+                return LookupResult("success", item["name"].strip(), "Google Play")
+    return LookupResult("parse_error", source="Google Play", reason="页面中未找到应用名称元数据")
+
+
+def query_fdroid_name(
+    package: str,
+    language: str | None = None,
+    timeout: int = 10,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> LookupResult:
+    language = language or system_locale()[0]
+    request = urllib.request.Request(
+        f"https://f-droid.org/packages/{urllib.parse.quote(package, safe='.')}/",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AndroidAppCleaner/1.1",
+            "Accept-Language": language.replace("_", "-"),
+        },
+    )
+    try:
+        with (opener or network_opener()).open(request, timeout=timeout) as response:
+            html = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        return LookupResult("not_found", source="F-Droid") if exc.code == 404 else LookupResult(
+            "http_error", source="F-Droid", reason=f"HTTP {exc.code}"
+        )
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return LookupResult(classify_network_error(exc), source="F-Droid", reason=str(exc))
+
+    parser = FdroidMetadataParser()
+    try:
+        parser.feed(html)
+    except Exception as exc:
+        return LookupResult("parse_error", source="F-Droid", reason=str(exc))
+    name = re.sub(r"\s*\|\s*F-Droid.*$", "", parser.name, flags=re.IGNORECASE).strip()
+    return (
+        LookupResult("success", name, "F-Droid")
+        if is_valid_app_name(name, package)
+        else LookupResult("parse_error", source="F-Droid", reason="页面中未找到应用名称")
+    )
+
+
+def query_online_name(
+    package: str,
+    language: str | None = None,
+    region: str | None = None,
+    timeout: int = 10,
+    proxy_url: str = "",
+) -> tuple[LookupResult, list[LookupResult]]:
+    opener = network_opener(proxy_url)
+    attempts = [
+        query_google_play_name(package, language, region, timeout, opener),
+    ]
+    if attempts[-1].status == "success":
+        return attempts[-1], attempts
+    attempts.append(query_fdroid_name(package, language, timeout, opener))
+    if attempts[-1].status == "success":
+        return attempts[-1], attempts
+    if all(item.status == "not_found" for item in attempts):
+        return LookupResult("not_found", reason="两个来源均未收录"), attempts
+    return LookupResult("failed", reason="所有来源均查询失败"), attempts
 
 
 class ConfirmDialog(tk.Toplevel):
@@ -539,6 +663,7 @@ class CleanerApp(tk.Tk):
         self.name_cache: dict[str, dict[str, str]] = {}
         self.online_name_cache: dict[str, dict[str, str]] = {}
         self.online_lookup_consent = False
+        self.proxy_url = ""
         self.events: queue.Queue = queue.Queue()
         self.logs: list[str] = []
         self.busy = False
@@ -920,7 +1045,12 @@ class CleanerApp(tk.Tk):
         )
         project_link.pack(anchor="w", pady=(14, 18))
         project_link.bind("<Button-1>", lambda _event: webbrowser.open(PROJECT_URL))
-        ttk.Button(card, text="关闭", command=dialog.destroy).pack(anchor="e")
+        buttons = ttk.Frame(card)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="网络设置", command=lambda: self._show_network_settings(dialog)).pack(
+            side="left"
+        )
+        ttk.Button(buttons, text="关闭", command=dialog.destroy).pack(side="right")
 
         dialog.bind("<Escape>", lambda _event: dialog.destroy())
         dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
@@ -928,6 +1058,75 @@ class CleanerApp(tk.Tk):
         x = self.winfo_rootx() + (self.winfo_width() - dialog.winfo_width()) // 2
         y = self.winfo_rooty() + (self.winfo_height() - dialog.winfo_height()) // 2
         dialog.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    def _show_network_settings(self, parent):
+        dialog = tk.Toplevel(parent)
+        dialog.title("网络设置")
+        dialog.resizable(False, False)
+        dialog.transient(parent)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=18)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="代理地址（可选）", font=("Microsoft YaHei UI", 10, "bold")).pack(
+            anchor="w"
+        )
+        ttk.Label(
+            frame,
+            text="留空时使用 Windows 系统代理或环境变量代理。",
+            foreground="#687b8d",
+        ).pack(anchor="w", pady=(4, 8))
+        proxy_var = tk.StringVar(value=self.proxy_url)
+        entry = ttk.Entry(frame, textvariable=proxy_var, width=52)
+        entry.pack(fill="x")
+        ttk.Label(
+            frame,
+            text="示例：http://127.0.0.1:7890",
+            foreground="#7a8b9a",
+        ).pack(anchor="w", pady=(5, 14))
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x")
+
+        def close():
+            dialog.destroy()
+            if parent.winfo_exists():
+                parent.grab_set()
+
+        def save():
+            value = proxy_var.get().strip()
+            if value and not re.match(r"^https?://", value, re.IGNORECASE):
+                messagebox.showwarning("代理地址无效", "请输入以 http:// 或 https:// 开头的代理地址。")
+                return
+            self.proxy_url = value
+            self.save_keep_list(quiet=True)
+            close()
+
+        ttk.Button(
+            buttons,
+            text="测试连接",
+            command=lambda: self._test_online_sources(proxy_var.get().strip()),
+        ).pack(side="left")
+        ttk.Button(buttons, text="取消", command=close).pack(side="right")
+        ttk.Button(buttons, text="保存", command=save).pack(side="right", padx=(0, 8))
+        entry.focus_set()
+        dialog.protocol("WM_DELETE_WINDOW", close)
+        dialog.bind("<Escape>", lambda _event: close())
+
+    def _test_online_sources(self, proxy_url: str):
+        if self.busy:
+            return
+        if proxy_url and not re.match(r"^https?://", proxy_url, re.IGNORECASE):
+            messagebox.showwarning("代理地址无效", "请输入正确的代理地址后再测试。")
+            return
+        self._set_busy(True, "正在测试应用商店连接…")
+
+        def worker():
+            opener = network_opener(proxy_url)
+            play = query_google_play_name("com.spotify.music", "zh_CN", "CN", 8, opener)
+            fdroid = query_fdroid_name("org.fdroid.fdroid", "en_US", 8, opener)
+            self.events.put(("network_test_done", play, fdroid))
+            self.events.put(("idle",))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _make_empty_state(self, parent, title, description, command):
         card = tk.Frame(
@@ -1172,6 +1371,8 @@ class CleanerApp(tk.Tk):
             and isinstance(value.get("fetched_at"), str)
         }
         self.online_lookup_consent = data.get("online_lookup_consent") is True
+        proxy_url = data.get("proxy_url", "")
+        self.proxy_url = proxy_url if isinstance(proxy_url, str) else ""
         self._update_counts()
 
     def get_whitelist(self) -> set[str]:
@@ -1187,6 +1388,7 @@ class CleanerApp(tk.Tk):
                         "name_cache": self.name_cache,
                         "online_lookup_consent": self.online_lookup_consent,
                         "online_name_cache": self.online_name_cache,
+                        "proxy_url": self.proxy_url,
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -1348,7 +1550,7 @@ class CleanerApp(tk.Tk):
         if not self.online_lookup_consent:
             allowed = messagebox.askyesno(
                 "联网补全名称",
-                "为了查询应用商店名称，程序将把以下信息发送给 Google Play：\n\n"
+                "为了查询应用商店名称，程序将把以下信息发送给 Google Play 和 F-Droid：\n\n"
                 "• 无法识别名称的应用包名\n"
                 "• Windows 当前语言和地区\n\n"
                 "不会发送设备序列号、应用数据或个人信息。\n"
@@ -1369,42 +1571,102 @@ class CleanerApp(tk.Tk):
             results = []
             with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
                 futures = {
-                    pool.submit(query_google_play_name, app.package, language, region, 10): app.package
+                    pool.submit(
+                        query_online_name,
+                        app.package,
+                        language,
+                        region,
+                        10,
+                        self.proxy_url,
+                    ): app.package
                     for app in targets
                 }
                 for index, future in enumerate(as_completed(futures), 1):
                     package = futures[future]
                     try:
-                        status, name = future.result()
-                    except Exception:
-                        status, name = "error", ""
-                    if status == "success":
+                        result, attempts = future.result()
+                    except Exception as exc:
+                        result = LookupResult("failed", reason=str(exc))
+                        attempts = []
+                    if result.status == "success":
                         self.online_name_cache[package] = {
-                            "name": name,
+                            "name": result.name,
                             "locale": locale_key,
                             "fetched_at": datetime.now(timezone.utc).isoformat(),
+                            "source": result.source,
                         }
-                    results.append((package, status, name))
+                    results.append((package, result, attempts))
                     self.events.put(("online_progress", index, len(targets)))
             self.events.put(("online_done", results))
             self.events.put(("idle",))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _apply_online_results(self, results: list[tuple[str, str, str]]) -> tuple[int, int, int]:
-        success = not_found = failed = 0
+    def _apply_online_results(
+        self,
+        results: list[tuple[str, LookupResult, list[LookupResult]]],
+    ) -> dict[str, int]:
+        stats = {
+            "success": 0,
+            "Google Play": 0,
+            "F-Droid": 0,
+            "not_found": 0,
+            "timeout": 0,
+            "dns_error": 0,
+            "proxy_error": 0,
+            "connection_error": 0,
+            "tls_error": 0,
+            "http_error": 0,
+            "parse_error": 0,
+            "failed": 0,
+        }
         apps_by_package = {app.package: app for app in self.apps}
-        for package, status, name in results:
+        for package, result, attempts in results:
             app = apps_by_package.get(package)
-            if status == "success" and is_valid_app_name(name, package):
+            if result.status == "success" and is_valid_app_name(result.name, package):
                 if app and app.name == package:
-                    app.name = name
-                    success += 1
-            elif status == "not_found":
-                not_found += 1
+                    app.name = result.name
+                    stats["success"] += 1
+                    if result.source in {"Google Play", "F-Droid"}:
+                        stats[result.source] += 1
+            elif result.status == "not_found":
+                stats["not_found"] += 1
             else:
-                failed += 1
-        return success, not_found, failed
+                stats["failed"] += 1
+                attempt_statuses = {attempt.status for attempt in attempts}
+                for status in attempt_statuses:
+                    if status in stats and status not in {"success", "not_found", "failed"}:
+                        stats[status] += 1
+        return stats
+
+    @staticmethod
+    def _online_summary(stats: dict[str, int]) -> tuple[str, str]:
+        summary = (
+            f"成功补全 {stats['success']} 个"
+            f"（Google Play {stats['Google Play']}，F-Droid {stats['F-Droid']}），"
+            f"未收录 {stats['not_found']} 个，请求失败 {stats['failed']} 个"
+        )
+        details = []
+        labels = {
+            "timeout": "请求超时",
+            "dns_error": "DNS 解析失败",
+            "proxy_error": "代理连接失败",
+            "connection_error": "网络连接失败",
+            "tls_error": "安全连接失败",
+            "http_error": "商店返回错误",
+            "parse_error": "页面格式异常",
+        }
+        for key, label in labels.items():
+            if stats[key]:
+                details.append(f"{label} {stats[key]}")
+        detail_text = "；".join(details)
+        if stats["failed"]:
+            proxy_note = (
+                "\n\n请确认电脑能访问 Google Play 或 F-Droid。"
+                "程序会使用 Windows 系统代理和环境变量代理；浏览器扩展中的代理不会自动生效。"
+            )
+            detail_text = (f"\n失败原因：{detail_text}" if detail_text else "") + proxy_note
+        return summary, detail_text
 
     def _refresh_trees(self):
         self.tree.delete(*self.tree.get_children())
@@ -1707,17 +1969,40 @@ class CleanerApp(tk.Tk):
                     self.progress.configure(value=completed)
                     self.status_var.set(f"正在联网补全应用名称：{completed}/{total}")
                 elif kind == "online_done":
-                    success, not_found, failed = self._apply_online_results(event[1])
+                    stats = self._apply_online_results(event[1])
                     self.save_keep_list(quiet=True)
                     self._refresh_trees()
-                    summary = f"成功补全 {success} 个，未找到 {not_found} 个，请求失败 {failed} 个"
+                    summary, details = self._online_summary(stats)
                     self.status_var.set(f"联网补全完成：{summary}")
-                    self._write_log(f"[联网补全完成] {summary}")
+                    self._write_log(f"[联网补全完成] {summary}{details}")
                     self._schedule_progress_hide()
-                    if failed:
-                        messagebox.showwarning("联网补全完成", summary)
+                    if stats["failed"]:
+                        messagebox.showwarning("联网补全完成", summary + details)
                     else:
                         messagebox.showinfo("联网补全完成", summary)
+                elif kind == "network_test_done":
+                    play, fdroid = event[1:]
+                    labels = {
+                        "success": "连接正常",
+                        "not_found": "可访问",
+                        "timeout": "请求超时",
+                        "dns_error": "DNS 解析失败",
+                        "proxy_error": "代理连接失败",
+                        "connection_error": "网络连接失败",
+                        "tls_error": "安全连接失败",
+                        "http_error": "服务器返回错误",
+                        "parse_error": "页面格式异常",
+                    }
+                    play_text = labels.get(play.status, "连接失败")
+                    fdroid_text = labels.get(fdroid.status, "连接失败")
+                    self.status_var.set(
+                        f"连接测试：Google Play {play_text}，F-Droid {fdroid_text}"
+                    )
+                    messagebox.showinfo(
+                        "连接测试完成",
+                        f"Google Play：{play_text}\nF-Droid：{fdroid_text}\n\n"
+                        "浏览器扩展代理不会自动应用到本程序；如有需要，请填写代理地址。",
+                    )
                 elif kind == "batch_item":
                     app, ok, output, index, total = event[1:]
                     self.progress.configure(value=index)
