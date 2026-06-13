@@ -52,7 +52,7 @@ class FakeOpener:
 
 class ParserTests(unittest.TestCase):
     def test_application_version(self):
-        self.assertEqual(APP_VERSION, "1.1.0")
+        self.assertEqual(APP_VERSION, "1.2.0")
 
     def test_package_validation(self):
         self.assertTrue(PACKAGE_RE.fullmatch("com.example.app"))

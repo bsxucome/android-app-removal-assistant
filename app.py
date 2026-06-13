@@ -28,12 +28,26 @@ from apkutils2 import APK
 
 
 APP_TITLE = "Android应用清除助手"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 PROJECT_URL = "https://github.com/bsxucome/android-app-removal-assistant"
 CONFIG_NAME = "Android应用清除助手.json"
 LEGACY_CONFIG_NAMES = ("安卓应用清理助手.json", "安卓三方应用清理工具.json")
 PACKAGE_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$")
 FORMAT_PLACEHOLDER_RE = re.compile(r"%(?:\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[a-zA-Z]")
+
+UI_BG = "#f7f9fc"
+UI_SURFACE = "#ffffff"
+UI_SURFACE_ALT = "#f1f3f4"
+UI_PRIMARY = "#0b57d0"
+UI_PRIMARY_HOVER = "#0842a0"
+UI_PRIMARY_CONTAINER = "#d3e3fd"
+UI_TEXT = "#1f1f1f"
+UI_TEXT_MUTED = "#5f6368"
+UI_OUTLINE = "#c4c7c5"
+UI_DANGER = "#b3261e"
+UI_DANGER_HOVER = "#8c1d18"
+UI_DANGER_CONTAINER = "#f9dedc"
+UI_SUCCESS = "#146c2e"
 
 
 def app_dir() -> Path:
@@ -499,11 +513,11 @@ class DeviceDropdown(tk.Frame):
     def __init__(self, parent, variable: tk.StringVar, command):
         super().__init__(
             parent,
-            background="#f4f2ee",
-            highlightbackground="#aaa59b",
-            highlightcolor="#1677d2",
+            background=UI_SURFACE_ALT,
+            highlightbackground=UI_OUTLINE,
+            highlightcolor=UI_PRIMARY,
             highlightthickness=1,
-            height=31,
+            height=36,
         )
         self.variable = variable
         self.command = command
@@ -517,18 +531,18 @@ class DeviceDropdown(tk.Frame):
         self.label = tk.Label(
             self,
             textvariable=variable,
-            background="#f4f2ee",
-            foreground="#172b3a",
+            background=UI_SURFACE_ALT,
+            foreground=UI_TEXT,
             anchor="w",
-            padx=9,
+            padx=11,
             font=("Microsoft YaHei UI", 9),
         )
         self.label.pack(side="left", fill="both", expand=True)
         self.arrow = tk.Label(
             self,
             text="▼",
-            background="#f4f2ee",
-            foreground="#172b3a",
+            background=UI_SURFACE_ALT,
+            foreground=UI_TEXT_MUTED,
             width=2,
             cursor="hand2",
             font=("Microsoft YaHei UI", 8),
@@ -568,8 +582,8 @@ class DeviceDropdown(tk.Frame):
         host = self.winfo_toplevel()
         popup = tk.Frame(
             host,
-            background="#ffffff",
-            highlightbackground="#595959",
+            background=UI_SURFACE,
+            highlightbackground=UI_OUTLINE,
             highlightthickness=1,
         )
         self.popup = popup
@@ -578,10 +592,10 @@ class DeviceDropdown(tk.Frame):
         listbox = tk.Listbox(
             popup,
             activestyle="none",
-            background="#ffffff",
-            foreground="#172b3a",
-            selectbackground="#1473d4",
-            selectforeground="#ffffff",
+            background=UI_SURFACE,
+            foreground=UI_TEXT,
+            selectbackground=UI_PRIMARY_CONTAINER,
+            selectforeground=UI_TEXT,
             borderwidth=0,
             relief="flat",
             highlightthickness=0,
@@ -654,8 +668,8 @@ class CleanerApp(tk.Tk):
             self.iconbitmap(default=str(icon_path()))
         except tk.TclError:
             pass
-        self.geometry("980x700")
-        self.minsize(820, 600)
+        self.geometry("1000x740")
+        self.minsize(900, 640)
         self.devices: list[Device] = []
         self.apps: list[AppInfo] = []
         self.uninstall_checked: set[str] = set()
@@ -679,12 +693,30 @@ class CleanerApp(tk.Tk):
         style = ttk.Style(self)
         if "clam" in style.theme_names():
             style.theme_use("clam")
-        self.configure(background="#eef3f8")
+        self.configure(background=UI_BG)
         style.configure(".", font=("Microsoft YaHei UI", 9))
-        style.configure("TFrame", background="#eef3f8")
-        style.configure("Card.TFrame", background="#ffffff")
-        style.configure("TLabel", background="#eef3f8", foreground="#243447")
-        style.configure("Card.TLabel", background="#ffffff", foreground="#243447")
+        style.configure("TFrame", background=UI_BG)
+        style.configure("Card.TFrame", background=UI_SURFACE)
+        style.configure("TLabel", background=UI_BG, foreground=UI_TEXT)
+        style.configure("Card.TLabel", background=UI_SURFACE, foreground=UI_TEXT)
+        style.configure(
+            "Title.TLabel",
+            background=UI_BG,
+            foreground=UI_TEXT,
+            font=("Microsoft YaHei UI", 18, "bold"),
+        )
+        style.configure(
+            "Subtitle.TLabel",
+            background=UI_BG,
+            foreground=UI_TEXT_MUTED,
+            font=("Microsoft YaHei UI", 9),
+        )
+        style.configure(
+            "Section.TLabel",
+            background=UI_SURFACE,
+            foreground=UI_TEXT,
+            font=("Microsoft YaHei UI", 11, "bold"),
+        )
         style.configure(
             "Device.TCombobox",
             padding=(8, 5),
@@ -692,105 +724,191 @@ class CleanerApp(tk.Tk):
         )
         style.configure(
             "Device.TButton",
-            padding=(12, 5),
-            font=("Microsoft YaHei UI", 9),
+            background=UI_PRIMARY_CONTAINER,
+            foreground=UI_PRIMARY,
+            borderwidth=0,
+            padding=(14, 7),
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        style.map(
+            "Device.TButton",
+            background=[("active", "#b8d2fa"), ("pressed", "#a8c7fa")],
+            foreground=[("disabled", "#9aa0a6")],
         )
         style.configure(
             "Meta.TLabel",
-            background="#eef3f8",
-            foreground="#60758a",
+            background=UI_BG,
+            foreground=UI_TEXT_MUTED,
             font=("Microsoft YaHei UI", 9),
         )
         style.configure(
             "About.TButton",
-            background="#ffffff",
-            foreground="#7a8b9a",
+            background=UI_BG,
+            foreground=UI_TEXT_MUTED,
             borderwidth=0,
-            padding=(4, 0),
-            font=("Microsoft YaHei UI", 8),
+            padding=(8, 4),
+            font=("Microsoft YaHei UI", 9),
         )
         style.map(
             "About.TButton",
-            background=[("active", "#ffffff")],
-            foreground=[("active", "#1677d2")],
+            background=[("active", UI_PRIMARY_CONTAINER)],
+            foreground=[("active", UI_PRIMARY)],
         )
-        style.configure("TNotebook", background="#eef3f8", borderwidth=0)
+        style.configure("TNotebook", background=UI_BG, borderwidth=0)
         style.configure(
             "TNotebook.Tab",
             padding=(16, 7),
-            background="#dfe8f1",
-            foreground="#61758a",
+            background=UI_SURFACE_ALT,
+            foreground=UI_TEXT_MUTED,
             font=("Microsoft YaHei UI", 9),
         )
         style.map(
             "TNotebook.Tab",
-            background=[("selected", "#1677d2"), ("active", "#cdddeb")],
-            foreground=[("selected", "#ffffff"), ("active", "#174a73")],
+            background=[("selected", UI_PRIMARY), ("active", UI_PRIMARY_CONTAINER)],
+            foreground=[("selected", "#ffffff"), ("active", UI_PRIMARY)],
             font=[("selected", ("Microsoft YaHei UI", 10, "bold"))],
             padding=[("selected", (22, 11))],
         )
-        style.configure("Treeview", rowheight=28, background="#ffffff", fieldbackground="#ffffff")
+        style.configure(
+            "Treeview",
+            rowheight=34,
+            background=UI_SURFACE,
+            fieldbackground=UI_SURFACE,
+            foreground=UI_TEXT,
+            borderwidth=0,
+            relief="flat",
+        )
         style.configure(
             "Treeview.Heading",
-            background="#e8f1fb",
-            foreground="#174a73",
+            background=UI_SURFACE_ALT,
+            foreground="#3c4043",
             font=("Microsoft YaHei UI", 9, "bold"),
-            padding=(6, 7),
+            padding=(8, 9),
+            relief="flat",
         )
-        style.map("Treeview", background=[("selected", "#d8eaff")], foreground=[("selected", "#16324f")])
-        style.configure("Primary.TButton", background="#1677d2", foreground="#ffffff", padding=(13, 7))
-        style.map("Primary.TButton", background=[("active", "#0e65b6"), ("disabled", "#a9c8e4")])
-        style.configure("Danger.TButton", background="#d64545", foreground="#ffffff", padding=(13, 7))
-        style.map("Danger.TButton", background=[("active", "#bd3030"), ("disabled", "#dfaaaa")])
+        style.map(
+            "Treeview",
+            background=[("selected", UI_PRIMARY_CONTAINER)],
+            foreground=[("selected", UI_TEXT)],
+        )
+        style.map(
+            "Treeview.Heading",
+            background=[("active", "#e8eaed")],
+        )
+        style.configure(
+            "Primary.TButton",
+            background=UI_PRIMARY,
+            foreground="#ffffff",
+            borderwidth=0,
+            padding=(16, 9),
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        style.map(
+            "Primary.TButton",
+            background=[("active", UI_PRIMARY_HOVER), ("disabled", "#a8c7fa")],
+        )
+        style.configure(
+            "Danger.TButton",
+            background=UI_DANGER,
+            foreground="#ffffff",
+            borderwidth=0,
+            padding=(16, 9),
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        style.map(
+            "Danger.TButton",
+            background=[("active", UI_DANGER_HOVER), ("disabled", "#e6b8b5")],
+        )
         style.configure(
             "CompactPrimary.TButton",
-            background="#1677d2",
+            background=UI_PRIMARY,
             foreground="#ffffff",
-            padding=(9, 4),
-            font=("Microsoft YaHei UI", 9),
+            borderwidth=0,
+            padding=(12, 7),
+            font=("Microsoft YaHei UI", 9, "bold"),
         )
-        style.map("CompactPrimary.TButton", background=[("active", "#0e65b6"), ("disabled", "#a9c8e4")])
+        style.map(
+            "CompactPrimary.TButton",
+            background=[("active", UI_PRIMARY_HOVER), ("disabled", "#a8c7fa")],
+        )
         style.configure(
             "CompactDanger.TButton",
-            background="#d64545",
+            background=UI_DANGER,
             foreground="#ffffff",
-            padding=(9, 4),
-            font=("Microsoft YaHei UI", 9),
+            borderwidth=0,
+            padding=(12, 7),
+            font=("Microsoft YaHei UI", 9, "bold"),
         )
-        style.map("CompactDanger.TButton", background=[("active", "#bd3030"), ("disabled", "#dfaaaa")])
+        style.map(
+            "CompactDanger.TButton",
+            background=[("active", UI_DANGER_HOVER), ("disabled", "#e6b8b5")],
+        )
         style.configure(
             "CompactOnline.TButton",
-            background="#e8f3ff",
-            foreground="#1261a0",
-            padding=(9, 4),
+            background=UI_PRIMARY_CONTAINER,
+            foreground=UI_PRIMARY,
+            borderwidth=0,
+            padding=(12, 7),
             font=("Microsoft YaHei UI", 9),
         )
         style.map(
             "CompactOnline.TButton",
-            background=[("active", "#d4e9fb"), ("disabled", "#edf2f6")],
-            foreground=[("disabled", "#9aa9b6")],
+            background=[("active", "#b8d2fa"), ("disabled", "#edf0f4")],
+            foreground=[("disabled", "#9aa0a6")],
         )
-        style.configure("Success.Horizontal.TProgressbar", troughcolor="#dfe8f1", background="#1fa971")
+        style.configure(
+            "Success.Horizontal.TProgressbar",
+            troughcolor="#e8eaed",
+            background=UI_SUCCESS,
+            borderwidth=0,
+            thickness=4,
+        )
         self.checkbox_off = self._checkbox_image(False)
         self.checkbox_on = self._checkbox_image(True)
-        root = ttk.Frame(self, padding=14)
+        root = ttk.Frame(self, padding=(22, 18, 22, 16))
         root.pack(fill="both", expand=True)
 
-        device_row = ttk.Frame(root, style="Card.TFrame", padding=(10, 8))
-        device_row.pack(fill="x", pady=(0, 9))
+        header = ttk.Frame(root)
+        header.pack(fill="x", pady=(0, 14))
+        title_block = ttk.Frame(header)
+        title_block.pack(side="left")
+        ttk.Label(title_block, text=APP_TITLE, style="Title.TLabel").pack(anchor="w")
+        ttk.Label(
+            title_block,
+            text="安全管理已连接 Android 设备中的第三方应用",
+            style="Subtitle.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Button(
+            header,
+            text="关于软件",
+            command=self._show_about,
+            style="About.TButton",
+            cursor="hand2",
+        ).pack(side="right", anchor="n")
+
+        device_row = ttk.Frame(root, style="Card.TFrame", padding=(14, 12))
+        device_row.pack(fill="x", pady=(0, 12))
+        device_icon = tk.Label(
+            device_row,
+            text="●",
+            background=UI_SURFACE,
+            foreground=UI_PRIMARY,
+            font=("Segoe UI Symbol", 12),
+        )
+        device_icon.pack(side="left", padx=(0, 8))
         ttk.Label(
             device_row,
             text="安卓设备",
             style="Card.TLabel",
-            font=("Microsoft YaHei UI", 11, "bold"),
-        ).pack(side="left", padx=(0, 10))
+            font=("Microsoft YaHei UI", 10, "bold"),
+        ).pack(side="left", padx=(0, 12))
         self.device_var = tk.StringVar()
         self.device_box = DeviceDropdown(
             device_row,
             variable=self.device_var,
             command=self._device_selection_changed,
         )
-        self.device_box.pack(side="left", fill="x", expand=True, padx=(6, 8))
+        self.device_box.pack(side="left", fill="x", expand=True, padx=(0, 10))
         ttk.Button(
             device_row,
             text="刷新设备",
@@ -799,11 +917,11 @@ class CleanerApp(tk.Tk):
         ).pack(side="left")
         self.connection_notice = tk.Frame(
             root,
-            background="#fff2db",
-            highlightbackground="#f59e0b",
+            background="#fef7e0",
+            highlightbackground="#f9ab00",
             highlightthickness=1,
-            padx=12,
-            pady=9,
+            padx=14,
+            pady=11,
         )
         self.connection_notice_text = tk.StringVar(
             value="未检测到可用设备。请开启“开发者选项 > USB 调试”，连接手机后允许 USB 调试。"
@@ -811,25 +929,25 @@ class CleanerApp(tk.Tk):
         tk.Label(
             self.connection_notice,
             text="!",
-            background="#fff2db",
-            foreground="#c2410c",
+            background="#fef7e0",
+            foreground="#b06000",
             font=("Microsoft YaHei UI", 16, "bold"),
         ).pack(side="left", padx=(0, 10))
         tk.Label(
             self.connection_notice,
             textvariable=self.connection_notice_text,
-            background="#fff2db",
-            foreground="#9a3412",
-            font=("Microsoft YaHei UI", 10, "bold"),
+            background="#fef7e0",
+            foreground="#5f4300",
+            font=("Microsoft YaHei UI", 9, "bold"),
             anchor="w",
             justify="left",
         ).pack(side="left", fill="x", expand=True)
-        self.connection_notice.pack(fill="x", pady=(8, 10))
+        self.connection_notice.pack(fill="x", pady=(0, 12))
 
         style.layout("Clean.TNotebook.Tab", [])
-        style.configure("Clean.TNotebook", borderwidth=0, background="#eef3f8")
+        style.configure("Clean.TNotebook", borderwidth=0, background=UI_BG)
         nav = ttk.Frame(root)
-        nav.pack(fill="x", pady=(0, 7))
+        nav.pack(fill="x", pady=(0, 10))
         self.nav_buttons = []
         self.nav_buttons.append(
             self._make_nav_button(nav, "勾选应用进行卸载", 0)
@@ -837,28 +955,47 @@ class CleanerApp(tk.Tk):
         self.nav_buttons.append(
             self._make_nav_button(nav, "勾选保留，清理其余", 1)
         )
-        self.notebook = ttk.Notebook(root, style="Clean.TNotebook")
+        self.notebook = ttk.Notebook(root, style="Clean.TNotebook", height=340)
         self.notebook.pack(fill="both", expand=True)
-        scan_tab = ttk.Frame(self.notebook, padding=10)
-        whitelist_tab = ttk.Frame(self.notebook, padding=10)
+        scan_tab = ttk.Frame(self.notebook, style="Card.TFrame", padding=(16, 14))
+        whitelist_tab = ttk.Frame(self.notebook, style="Card.TFrame", padding=(16, 14))
         self.notebook.add(scan_tab, text="勾选应用进行卸载")
         self.notebook.add(whitelist_tab, text="勾选保留，清理其余")
         self.notebook.bind("<<NotebookTabChanged>>", self._sync_nav_buttons)
         self.after_idle(self._sync_nav_buttons)
 
-        toolbar = ttk.Frame(scan_tab, padding=(2, 2))
-        toolbar.pack(fill="x", pady=(0, 8))
+        scan_heading = ttk.Frame(scan_tab, style="Card.TFrame")
+        scan_heading.pack(fill="x", pady=(0, 12))
+        scan_heading_text = ttk.Frame(scan_heading, style="Card.TFrame")
+        scan_heading_text.pack(side="left")
+        ttk.Label(
+            scan_heading_text,
+            text="选择要卸载的应用",
+            style="Section.TLabel",
+        ).pack(anchor="w")
+        ttk.Label(
+            scan_heading_text,
+            text="扫描后勾选应用，可一次卸载多个项目",
+            style="Card.TLabel",
+            foreground=UI_TEXT_MUTED,
+        ).pack(anchor="w", pady=(2, 0))
+
+        toolbar = ttk.Frame(scan_tab, style="Card.TFrame")
+        toolbar.pack(fill="x", pady=(0, 10))
         self.uninstall_search_var = tk.StringVar()
         _, self.uninstall_clear_label = self._make_search_box(
-            toolbar, self.uninstall_search_var
+            toolbar, self.uninstall_search_var, UI_SURFACE
         )
         self.uninstall_search_var.trace_add("write", self._search_changed)
         self.selected_count_var = tk.StringVar(value="已选择 0 个应用")
         ttk.Label(
-            toolbar, textvariable=self.selected_count_var, style="Meta.TLabel"
+            toolbar,
+            textvariable=self.selected_count_var,
+            style="Card.TLabel",
+            foreground=UI_TEXT_MUTED,
         ).pack(side="left", padx=(12, 0))
         self.uninstall_button = ttk.Button(
-            toolbar,
+            scan_heading,
             text="卸载已选应用",
             command=self.uninstall_selected,
             state="disabled",
@@ -866,7 +1003,7 @@ class CleanerApp(tk.Tk):
         )
         self.uninstall_button.pack(side="right")
         self.online_lookup_button = ttk.Button(
-            toolbar,
+            scan_heading,
             text="联网补全名称（0）",
             command=self.lookup_names_online,
             state="disabled",
@@ -874,18 +1011,27 @@ class CleanerApp(tk.Tk):
         )
         self.online_lookup_button.pack(side="right", padx=(0, 8))
         self.scan_button = ttk.Button(
-            toolbar,
+            scan_heading,
             text="扫描手机应用",
             command=self.scan_apps,
             style="CompactPrimary.TButton",
         )
         self.scan_button.pack(side="right", padx=(0, 8))
 
-        scan_list_frame = ttk.Frame(scan_tab)
+        scan_list_frame = tk.Frame(
+            scan_tab,
+            background=UI_SURFACE,
+            highlightbackground="#dadce0",
+            highlightthickness=1,
+        )
         scan_list_frame.pack(fill="both", expand=True)
         columns = ("name", "package")
         self.tree = ttk.Treeview(
-            scan_list_frame, columns=columns, show="tree headings", selectmode="none"
+            scan_list_frame,
+            columns=columns,
+            show="tree headings",
+            selectmode="none",
+            height=7,
         )
         self.tree.heading("#0", text="全选", command=self._toggle_select_all)
         self.tree.column("#0", width=92, minwidth=92, stretch=False, anchor="center")
@@ -907,35 +1053,56 @@ class CleanerApp(tk.Tk):
 
         keep_tip = tk.Frame(
             whitelist_tab,
-            background="#e8f3ff",
-            highlightbackground="#b8d8f3",
+            background="#e8f0fe",
+            highlightbackground="#aecbfa",
             highlightthickness=1,
-            padx=11,
-            pady=8,
+            padx=13,
+            pady=10,
         )
         keep_tip.pack(fill="x", pady=(0, 10))
         tk.Label(
             keep_tip,
             text="保留规则",
-            background="#e8f3ff",
-            foreground="#1261a0",
+            background="#e8f0fe",
+            foreground=UI_PRIMARY,
             font=("Microsoft YaHei UI", 9, "bold"),
         ).pack(side="left", padx=(0, 10))
         tk.Label(
             keep_tip,
             text="勾选需要保留的应用；清理时仅卸载未勾选项。选择会自动保存。",
-            background="#e8f3ff",
-            foreground="#365b78",
+            background="#e8f0fe",
+            foreground="#3c4043",
             font=("Microsoft YaHei UI", 9),
         ).pack(side="left")
-        keep_toolbar = ttk.Frame(whitelist_tab, padding=(2, 2))
-        keep_toolbar.pack(fill="x", pady=(0, 8))
+        keep_heading = ttk.Frame(whitelist_tab, style="Card.TFrame")
+        keep_heading.pack(fill="x", pady=(0, 12), before=keep_tip)
+        keep_heading_text = ttk.Frame(keep_heading, style="Card.TFrame")
+        keep_heading_text.pack(side="left")
+        ttk.Label(
+            keep_heading_text,
+            text="保留重要应用，清理其余应用",
+            style="Section.TLabel",
+        ).pack(anchor="w")
+        ttk.Label(
+            keep_heading_text,
+            text="已勾选的应用会保留，未勾选的应用将被卸载",
+            style="Card.TLabel",
+            foreground=UI_TEXT_MUTED,
+        ).pack(anchor="w", pady=(2, 0))
+
+        keep_toolbar = ttk.Frame(whitelist_tab, style="Card.TFrame")
+        keep_toolbar.pack(fill="x", pady=(0, 10))
         self.keep_search_var = tk.StringVar()
-        _, self.keep_clear_label = self._make_search_box(keep_toolbar, self.keep_search_var)
+        _, self.keep_clear_label = self._make_search_box(
+            keep_toolbar, self.keep_search_var, UI_SURFACE
+        )
         self.keep_search_var.trace_add("write", self._search_changed)
         self.keep_count_var = tk.StringVar(value="已保留 0 个应用")
         ttk.Label(
-            keep_toolbar, textvariable=self.keep_count_var, style="Meta.TLabel"
+            keep_toolbar,
+            textvariable=self.keep_count_var,
+            style="Card.TLabel",
+            foreground=UI_TEXT_MUTED,
         ).pack(side="right")
         self.keep_online_lookup_button = ttk.Button(
             keep_toolbar,
@@ -946,11 +1113,20 @@ class CleanerApp(tk.Tk):
         )
         self.keep_online_lookup_button.pack(side="right", padx=(0, 12))
 
-        keep_list_frame = ttk.Frame(whitelist_tab)
+        keep_list_frame = tk.Frame(
+            whitelist_tab,
+            background=UI_SURFACE,
+            highlightbackground="#dadce0",
+            highlightthickness=1,
+        )
         keep_list_frame.pack(fill="both", expand=True)
         keep_columns = ("name", "package")
         self.keep_tree = ttk.Treeview(
-            keep_list_frame, columns=keep_columns, show="tree headings", selectmode="none"
+            keep_list_frame,
+            columns=keep_columns,
+            show="tree headings",
+            selectmode="none",
+            height=4,
         )
         self.keep_tree.heading("#0", text="全选", command=self._toggle_select_all_keep)
         self.keep_tree.column("#0", width=92, minwidth=92, stretch=False, anchor="center")
@@ -969,13 +1145,13 @@ class CleanerApp(tk.Tk):
             "扫描完成后，可在这里勾选需要保留的应用。",
             self.scan_apps,
         )
-        white_buttons = ttk.Frame(whitelist_tab)
+        white_buttons = ttk.Frame(whitelist_tab, style="Card.TFrame")
         white_buttons.pack(fill="x", pady=(10, 0))
         tk.Label(
             white_buttons,
             text="卸载会同时删除应用数据，请确认保留项无误。",
-            background="#eef3f8",
-            foreground="#c2410c",
+            background=UI_SURFACE,
+            foreground=UI_DANGER,
             font=("Microsoft YaHei UI", 9),
         ).pack(side="left", pady=5)
         self.bulk_button = ttk.Button(
@@ -987,8 +1163,8 @@ class CleanerApp(tk.Tk):
         )
         self.bulk_button.pack(side="right")
 
-        self.status_frame = ttk.Frame(root, style="Card.TFrame", padding=(10, 8))
-        self.status_frame.pack(fill="x", pady=(10, 0))
+        self.status_frame = ttk.Frame(root, style="Card.TFrame", padding=(14, 10))
+        self.status_frame.pack(fill="x", pady=(12, 0))
         self.progress = ttk.Progressbar(
             self.status_frame, mode="determinate", style="Success.Horizontal.TProgressbar"
         )
@@ -997,12 +1173,12 @@ class CleanerApp(tk.Tk):
             self.status_frame, textvariable=self.status_var, style="Card.TLabel"
         )
         self.status_label.pack(side="left", anchor="w")
-        ttk.Button(
+        ttk.Label(
             self.status_frame,
-            text="关于软件",
-            command=self._show_about,
-            style="About.TButton",
-            cursor="hand2",
+            text=f"v{APP_VERSION}",
+            style="Card.TLabel",
+            foreground="#9aa0a6",
+            font=("Microsoft YaHei UI", 8),
         ).pack(side="right")
 
     def _config_path(self) -> Path:
@@ -1131,26 +1307,24 @@ class CleanerApp(tk.Tk):
     def _make_empty_state(self, parent, title, description, command):
         card = tk.Frame(
             parent,
-            background="#ffffff",
-            highlightbackground="#c7d9e8",
-            highlightthickness=1,
-            padx=28,
-            pady=22,
+            background=UI_SURFACE,
+            padx=36,
+            pady=28,
         )
         tk.Label(
             card,
             text=title,
-            background="#ffffff",
-            foreground="#174a73",
-            font=("Microsoft YaHei UI", 13, "bold"),
+            background=UI_SURFACE,
+            foreground=UI_TEXT,
+            font=("Microsoft YaHei UI", 14, "bold"),
         ).pack()
         tk.Label(
             card,
             text=description,
-            background="#ffffff",
-            foreground="#6b7f91",
+            background=UI_SURFACE,
+            foreground=UI_TEXT_MUTED,
             font=("Microsoft YaHei UI", 9),
-        ).pack(pady=(7, 14))
+        ).pack(pady=(8, 16))
         ttk.Button(
             card,
             text="扫描手机应用",
@@ -1175,9 +1349,9 @@ class CleanerApp(tk.Tk):
     def _make_nav_button(self, parent: tk.Misc, text: str, index: int):
         canvas = tk.Canvas(
             parent,
-            width=170,
-            height=40,
-            background="#eef3f8",
+            width=210,
+            height=46,
+            background=UI_BG,
             highlightthickness=0,
             borderwidth=0,
             cursor="hand2",
@@ -1197,15 +1371,15 @@ class CleanerApp(tk.Tk):
         else:
             selected = self.notebook.index(self.notebook.select()) == canvas.nav_index
         canvas.delete("all")
-        fill = "#1677d2" if selected else ("#e0edf8" if hover else "#f7fafc")
-        outline = "#1677d2" if selected else "#b9cad8"
-        foreground = "#ffffff" if selected else "#45637a"
+        fill = UI_PRIMARY_CONTAINER if selected else ("#eef3fc" if hover else UI_BG)
+        outline = UI_PRIMARY_CONTAINER if selected else UI_BG
+        foreground = UI_PRIMARY if selected else UI_TEXT_MUTED
         self._rounded_rectangle(
-            canvas, 1, 1, 169, 39, radius=13, fill=fill, outline=outline, width=1
+            canvas, 1, 1, 209, 45, radius=22, fill=fill, outline=outline, width=1
         )
         canvas.create_text(
-            85,
-            20,
+            105,
+            23,
             text=canvas.nav_text,
             fill=foreground,
             font=("Microsoft YaHei UI", 10, "bold" if selected else "normal"),
@@ -1215,27 +1389,32 @@ class CleanerApp(tk.Tk):
         for button in getattr(self, "nav_buttons", []):
             self._draw_nav_button(button)
 
-    def _make_search_box(self, parent: tk.Misc, variable: tk.StringVar):
+    def _make_search_box(
+        self,
+        parent: tk.Misc,
+        variable: tk.StringVar,
+        parent_background: str = UI_BG,
+    ):
         canvas = tk.Canvas(
             parent,
-            width=300,
-            height=34,
-            background="#eef3f8",
+            width=310,
+            height=40,
+            background=parent_background,
             highlightthickness=0,
             borderwidth=0,
         )
         canvas.pack(side="left")
 
-        def draw_border(color="#b8c7d4", width=1):
+        def draw_border(color=UI_OUTLINE, width=1):
             canvas.delete("search_bg")
             self._rounded_rectangle(
                 canvas,
                 1,
                 1,
-                299,
-                33,
-                radius=16,
-                fill="#ffffff",
+                309,
+                39,
+                radius=19,
+                fill=UI_SURFACE_ALT,
                 outline=color,
                 width=width,
                 tags="search_bg",
@@ -1246,47 +1425,47 @@ class CleanerApp(tk.Tk):
         search_icon = tk.Label(
             canvas,
             text="⌕",
-            background="#ffffff",
-            foreground="#60758a",
+            background=UI_SURFACE_ALT,
+            foreground=UI_TEXT_MUTED,
             font=("Segoe UI Symbol", 13),
         )
-        canvas.create_window(19, 17, window=search_icon, width=24, height=25)
+        canvas.create_window(21, 20, window=search_icon, width=26, height=28)
         entry = tk.Entry(
             canvas,
             textvariable=variable,
             relief="flat",
             borderwidth=0,
             highlightthickness=0,
-            background="#ffffff",
-            foreground="#243447",
-            insertbackground="#1677d2",
+            background=UI_SURFACE_ALT,
+            foreground=UI_TEXT,
+            insertbackground=UI_PRIMARY,
             font=("Microsoft YaHei UI", 9),
         )
-        canvas.create_window(145, 17, window=entry, width=220, height=24)
+        canvas.create_window(150, 20, window=entry, width=225, height=26)
         placeholder = tk.Label(
             canvas,
             text="搜索应用名或包名",
-            background="#ffffff",
-            foreground="#9aa9b6",
+            background=UI_SURFACE_ALT,
+            foreground="#80868b",
             font=("Microsoft YaHei UI", 9),
             anchor="w",
             cursor="xterm",
         )
         placeholder_window = canvas.create_window(
-            145, 17, window=placeholder, width=220, height=24
+            150, 20, window=placeholder, width=225, height=26
         )
         clear = tk.Label(
             canvas,
             text="×",
-            background="#ffffff",
-            foreground="#a6b2bd",
-            activebackground="#edf4fa",
-            activeforeground="#d64545",
+            background=UI_SURFACE_ALT,
+            foreground="#9aa0a6",
+            activebackground=UI_PRIMARY_CONTAINER,
+            activeforeground=UI_DANGER,
             cursor="arrow",
             font=("Microsoft YaHei UI", 12),
             padx=8,
         )
-        canvas.create_window(279, 17, window=clear, width=36, height=28)
+        canvas.create_window(289, 20, window=clear, width=36, height=30)
         clear.bind("<Button-1>", lambda _event: variable.set(""))
         entry.bind("<Escape>", lambda _event: variable.set(""))
 
@@ -1300,11 +1479,11 @@ class CleanerApp(tk.Tk):
         search_icon.bind("<Button-1>", lambda _event: entry.focus_set())
         entry.bind(
             "<FocusIn>",
-            lambda _event: (draw_border("#1677d2", 2), update_placeholder()),
+            lambda _event: (draw_border(UI_PRIMARY, 2), update_placeholder()),
         )
         entry.bind(
             "<FocusOut>",
-            lambda _event: (draw_border("#b8c7d4", 1), update_placeholder()),
+            lambda _event: (draw_border(UI_OUTLINE, 1), update_placeholder()),
         )
         variable.trace_add("write", update_placeholder)
         return canvas, clear
@@ -1329,11 +1508,11 @@ class CleanerApp(tk.Tk):
 
     def _checkbox_image(self, checked: bool) -> tk.PhotoImage:
         image = tk.PhotoImage(width=18, height=18)
-        image.put("#ffffff", to=(0, 0, 18, 18))
-        image.put("#687078", to=(2, 2, 16, 16))
-        image.put("#ffffff", to=(3, 3, 15, 15))
+        image.put(UI_SURFACE, to=(0, 0, 18, 18))
+        image.put("#747775", to=(2, 2, 16, 16))
+        image.put(UI_SURFACE, to=(3, 3, 15, 15))
         if checked:
-            image.put("#1473e6", to=(3, 3, 15, 15))
+            image.put(UI_PRIMARY, to=(3, 3, 15, 15))
             for x, y in ((5, 8), (6, 9), (7, 10), (8, 9), (9, 8), (10, 7), (11, 6), (12, 5)):
                 image.put("#ffffff", to=(x, y, x + 2, y + 2))
         return image
@@ -1729,7 +1908,7 @@ class CleanerApp(tk.Tk):
             if label is not None:
                 active = bool(variable.get())
                 label.configure(
-                    foreground="#52697d" if active else "#c5ced6",
+                    foreground=UI_TEXT_MUTED if active else "#bdc1c6",
                     cursor="hand2" if active else "arrow",
                 )
 
